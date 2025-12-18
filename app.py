@@ -98,13 +98,12 @@ if st.button("[💌 일기 전달하기]", type="primary", use_container_width=T
 
             st.rerun()
 
-# --- 4. 결과 화면 & 피드백 ---
+# 결과 화면 표시 & 피드백 남길 수 있도록 하기
 if st.session_state.robot_response:
     st.write("---")
     st.subheader("🎨 에코의 감정 분석 결과")
     
-    # [수정됨] 1) 감정 색깔 박스 크기 확대 및 디자인 개선
-    # padding을 늘리고, 그림자(box-shadow)를 추가하여 입체감을 줌
+    # 감정을 표현한 색깔로 표현한 박스 안에 답변 표시하기
     st.markdown(f"""
     <div style='background-color:{st.session_state.emotion_color}; 
                 padding: 40px; 
@@ -118,15 +117,16 @@ if st.session_state.robot_response:
     </div>
     """, unsafe_allow_html=True)
 
-    # [수정됨] 2) 피드백 시스템 개선
+    # 감정 분석이나 일기 답변이 의도와 다를 때, 피드백 남기기 (진짜 감정과 바라는 점 2개 항목)
     with st.expander("🛠️ 에코 더 똑똑하게 만들기 (피드백 전송)"):
         st.write("로봇의 분석이 아쉬웠나요? 솔직한 감정을 알려주시면 다음 분석에 반영됩니다.")
         feedback_emotion = st.text_input("내가 느낀 진짜 감정은?", placeholder="예: 슬픔보다는 억울함에 가까워.")
         feedback_wish = st.text_area("로봇에게 바라는 점", placeholder="예: 해결책보다는 그냥 내 편을 들어줘.")
 
+        # 피드백 작성 후 누르는 전송 버튼
         if st.button("[피드백 전송 및 기억시키기]"):
             if feedback_emotion or feedback_wish:
-                # 피드백 내용을 대화 기록 형식으로 만듦
+                # 피드백 내용을 대화 기록 형식으로 만들기
                 feedback_prompt = f"""
                 [SYSTEM NOTE: 사용자가 이전 분석에 대해 피드백을 주었습니다.]
                 - 사용자의 실제 감정: {feedback_emotion}
@@ -134,13 +134,13 @@ if st.session_state.robot_response:
                 (다음 일기 분석 시 이 피드백을 최우선으로 고려하여 성격과 답변 방향을 조정하세요.)
                 """
                 
-                # [중요] 히스토리에 유저 메시지로 강제 추가
+                # 히스토리에 유저 메시지로 추가
                 st.session_state.chat_history.append({"role": "user", "parts": [feedback_prompt]})
-                # 모델이 답변한 것처럼 더미 응답 추가 (히스토리 짝을 맞추기 위함)
+                # 모델이 답변한 것처럼 더미 응답 추가하기 (히스토리 짝을 맞추기 위해서)
                 st.session_state.chat_history.append({"role": "model", "parts": ["알겠습니다. 입력해주신 피드백을 메모리에 저장했습니다. 다음 분석부터 반영하겠습니다."]})
                 
                 st.success("피드백이 에코의 장기 기억장치에 저장되었습니다! 🧠")
-                time.sleep(2) # 사용자가 메시지를 볼 시간을 줌
+                time.sleep(2) # 학생이 메시지를 볼 시간을 주기
                 st.rerun() # 화면 새로고침하여 상태 업데이트
             else:
                 st.warning("피드백 내용을 입력해주세요.")

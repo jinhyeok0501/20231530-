@@ -3,7 +3,7 @@ import google.generativeai as genai
 import re
 import time # 피드백 후 잠시 대기를 위해 추가
 
-# --- 함수 및 설정 ---
+# 성격 튜닝 값에 따라 이모지 다르게 표시하기
 def get_emoji(positivity, empathy):
     if positivity <= 50 and empathy <= 50:
         return "🧐"  # T + 부정 = 사려 깊음 / 분석적
@@ -14,30 +14,34 @@ def get_emoji(positivity, empathy):
     else:
         return "🥰"  # F + 긍정 = 사랑스러움 / 공감
 
+# 제목 설정하기
 st.set_page_config(page_title="에코의 일기장", page_icon="📖", layout="centered")
 
-# --- 세션 상태 초기화 (기억 저장소) ---
+# 세션의 상태를 초기화하기
 if "diary_content" not in st.session_state:
     st.session_state.diary_content = ""
 if "robot_response" not in st.session_state:
     st.session_state.robot_response = ""
 if "emotion_color" not in st.session_state:
-    # 기본 색상을 너무 밝지 않은 회색으로 설정
+    # 기본 색상 회색으로 설정하기
     st.session_state.emotion_color = "#F0F2F6" 
-# [중요] 대화 히스토리 저장을 위한 세션 추가
+# 대화 히스토리 저장을 위한 세션을 ㅇ추가하기
 if "chat_history" not in st.session_state:
     st.session_state.chat_history = []
 
 
-# --- 1. 설정 (사이드바) ---
+# 사이드바 설정
 with st.sidebar:
+    # gemini api키 입력하는 칸 만들기 (교사의 api 복사해서 입력)
     st.title("⚙️ 설정")
     api_key = st.text_input("Gemini API 키 입력", type="password", help="Google Cloud에서 발급받은 Gemini API 키를 입력하세요.")
 
+    # 로봇 성격을 튜닝하는 slider
     st.subheader("🤖 로봇 성격 튜닝")
     positivity = st.slider("긍정 회로", 0, 100, 50, help="0=비관적/현실비판, 100=낙관적/희망회로")
     empathy = st.slider("공감 지수", 0, 100, 50, help="0=T(해결책/팩트), 100=F(공감/위로)")
 
+    # api 키 입력 확인 문구 표시
     if api_key:
         genai.configure(api_key=api_key)
         st.success("API 키가 설정되었습니다!")

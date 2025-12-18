@@ -45,37 +45,44 @@ with st.sidebar:
         st.warning("API 키를 입력해주세요.")
     
 
-# --- 2. 메인 화면 (UI) ---
+# 메인 화면 (제목 표시)
 st.title("📖 마음을 읽는 일기 로봇, 에코")
 
-# 상태 아이콘
+# 사이드바 설정 상태에 따라 에코 이모지 다르게 표시하기
 st.markdown(f"<h1 style='text-align: center; font-size: 3em;'>{get_emoji(positivity, empathy)}</h1>", unsafe_allow_html=True)
 
+# 일기 작성할 수 있는 칸
 st.subheader("오늘의 일기를 작성해주세요.")
 st.session_state.diary_content = st.text_area("일기장", height=200, value=st.session_state.diary_content, key="diary_input", placeholder="오늘 무슨 일이 있었나요?")
 
+# 일기 작성하기 
 if st.button("[💌 일기 전달하기]", type="primary", use_container_width=True):
+    # api 키 없이 작성했을 때 표시
     if not api_key:
         st.error("API 키를 먼저 입력해주세요.")
+    # 내용 없이 작성했을 때 표시
     elif not st.session_state.diary_content:
         st.warning("일기 내용을 입력해주세요.")
+    # api와 내용 모두 작성 후 버튼을 눌렀을 때 분석 시작
     else:
         with st.spinner("에코가 일기를 읽고 감정을 분석 중입니다..."):
-            # --- 3. AI 로직 ---
+            # gemini 일기 내용 분석 및 답변 프롬프트
             system_instruction = f"""
             너는 사용자의 일기를 읽고 답장해주는 로봇 '에코'야.
+            # 사이드바 설정 따라서 성격 설정
             너의 현재 성격 설정: positivity({positivity}/100), empathy({empathy}/100).
             (positivity 낮음:현실비판/높음:희망회로, empathy 낮음:팩트/높음:공감위로)
 
+            # 답변 형식 지정
             답변 형식: 반드시 아래 2가지 내용을 포함해서 자연스럽게 말해줘.
             1. 🎨 감정의 색깔: 이 일기의 감정을 대표하는 색상 이름과 Hex Code 하나만 작성 (예: 우울한 블루 #0000FF).
             2. 🤖 에코의 답장: 설정된 성격에 맞춰서, 일기 내용 중 구체적인 사건을 언급하며 친구처럼 다정하게 조언하거나 위로해줘.
             """
 
-            # 1. 모델 설정 (gemini-2.5-flash 사용)
+            # 모델 설정 (gemini-2.5-flash)
             model = genai.GenerativeModel("models/gemini-2.5-flash")
             
-            # 2. [중요] 기존 히스토리를 불러와서 대화 시작
+            # 기존 히스토리를 불러와서 대화 시작 (피드백 반영하기 위함)
             chat = model.start_chat(history=st.session_state.chat_history)
             
             full_prompt = system_instruction + "\n\n[오늘의 일기]:\n" + st.session_state.diary_content
@@ -83,10 +90,10 @@ if st.button("[💌 일기 전달하기]", type="primary", use_container_width=T
             response = chat.send_message(full_prompt)
             st.session_state.robot_response = response.text
             
-            # 3. [중요] 업데이트된 히스토리를 세션에 다시 저장
+            # 업데이트된 히스토리를 다시 저장하기기
             st.session_state.chat_history = chat.history
 
-            # 색상 추출
+            # 색상 추출하기 (감정에 맞게)
             try:
                 color_match = re.search(r'#(?:[0-9a-fA-F]{3}){1,2}', st.session_state.robot_response)
                 if color_match:

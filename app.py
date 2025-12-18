@@ -1,9 +1,9 @@
 import streamlit as st
 import google.generativeai as genai
-import os
-import re # Add import for re module
+import re
+import time # 피드백 후 잠시 대기를 위해 추가
 
-# Function to get emoji based on positivity and empathy
+# --- 함수 및 설정 ---
 def get_emoji(positivity, empathy):
     if positivity <= 50 and empathy <= 50:
         return "🧐"  # T + 부정 = 사려 깊음 / 분석적
@@ -14,15 +14,20 @@ def get_emoji(positivity, empathy):
     else:
         return "🥰"  # F + 긍정 = 사랑스러움 / 공감
 
-# Initialize session state for persistence
+st.set_page_config(page_title="에코의 일기장", page_icon="📖", layout="centered")
+
+# --- 세션 상태 초기화 (기억 저장소) ---
 if "diary_content" not in st.session_state:
     st.session_state.diary_content = ""
 if "robot_response" not in st.session_state:
     st.session_state.robot_response = ""
 if "emotion_color" not in st.session_state:
-    st.session_state.emotion_color = ""
+    # 기본 색상을 너무 밝지 않은 회색으로 설정
+    st.session_state.emotion_color = "#F0F2F6" 
+# [중요] 대화 히스토리 저장을 위한 세션 추가
+if "chat_history" not in st.session_state:
+    st.session_state.chat_history = []
 
-st.set_page_config(layout="centered")
 
 # --- 1. 설정 (사이드바) ---
 with st.sidebar:
@@ -44,64 +49,98 @@ with st.sidebar:
 st.title("📖 마음을 읽는 일기 로봇, 에코")
 
 # 상태 아이콘
-st.markdown(f"<h1 style='text-align: center;'>{get_emoji(positivity, empathy)}</h1>", unsafe_allow_html=True)
+st.markdown(f"<h1 style='text-align: center; font-size: 3em;'>{get_emoji(positivity, empathy)}</h1>", unsafe_allow_html=True)
 
 st.subheader("오늘의 일기를 작성해주세요.")
-st.session_state.diary_content = st.text_area("일기장", height=200, value=st.session_state.diary_content, key="diary_input")
+st.session_state.diary_content = st.text_area("일기장", height=200, value=st.session_state.diary_content, key="diary_input", placeholder="오늘 무슨 일이 있었나요?")
 
-if st.button("[일기 전달하기]"):
+if st.button("[💌 일기 전달하기]", type="primary", use_container_width=True):
     if not api_key:
         st.error("API 키를 먼저 입력해주세요.")
     elif not st.session_state.diary_content:
-        st.error("일기 내용을 입력해주세요.")
+        st.warning("일기 내용을 입력해주세요.")
     else:
-        # --- 3. AI 로직 (Gemini API - google.generativeai) ---
-        # System Instruction (프롬프트)
-        system_instruction = f"""
-        너는 사용자의 일기를 읽고 답장해주는 로봇이야.
-        너의 성격은 positivity({positivity})과 empathy({empathy}) 수치에 따라 결정돼.
-        positivity: 0=비관적/현실비판, 100=낙관적/희망회로
-        empathy: 0=T(해결책/팩트), 100=F(공감/위로)
+        with st.spinner("에코가 일기를 읽고 감정을 분석 중입니다..."):
+            # --- 3. AI 로직 ---
+            system_instruction = f"""
+            너는 사용자의 일기를 읽고 답장해주는 로봇 '에코'야.
+            너의 현재 성격 설정: positivity({positivity}/100), empathy({empathy}/100).
+            (positivity 낮음:현실비판/높음:희망회로, empathy 낮음:팩트/높음:공감위로)
 
-        답변 형식: 반드시 아래 3가지 내용을 포함해서 자연스럽게 말해줘.
-        1. 🔍 오늘의 핵심 사건: 일기에서 가장 중요한 사건 요약.
-        2. 🎨 감정의 색깔: 이 일기의 감정을 대표하는 색상 이름과 Hex Code (예: 우울한 블루 #0000FF).
-        3. 🤖 에코의 답장: 설정된 성격에 맞춰서, 일기 내용 중 구체적인 사건을 언급하며 조언하거나 위로해줘.
-        """
+            답변 형식: 반드시 아래 2가지 내용을 포함해서 자연스럽게 말해줘.
+            1. 🎨 감정의 색깔: 이 일기의 감정을 대표하는 색상 이름과 Hex Code 하나만 작성 (예: 우울한 블루 #0000FF).
+            2. 🤖 에코의 답장: 설정된 성격에 맞춰서, 일기 내용 중 구체적인 사건을 언급하며 친구처럼 다정하게 조언하거나 위로해줘.
+            """
 
-        # 1. 모델을 가장 안정적인 'gemini-pro'로 변경
-        model = genai.GenerativeModel("models/gemini-2.5-flash")
-        chat = model.start_chat(history=[])
-        
-        # 2. 구버전에서도 잘 작동하도록 '성격(시스템 프롬프트)'을 내용과 합쳐서 보냄
-        full_prompt = system_instruction + "\n\n[오늘의 일기]:\n" + st.session_state.diary_content
-        
-        response = chat.send_message(full_prompt)
-        st.session_state.robot_response = response.text
+            # 1. 모델 설정 (gemini-2.5-flash 사용)
+            model = genai.GenerativeModel("models/gemini-2.5-flash")
+            
+            # 2. [중요] 기존 히스토리를 불러와서 대화 시작
+            chat = model.start_chat(history=st.session_state.chat_history)
+            
+            full_prompt = system_instruction + "\n\n[오늘의 일기]:\n" + st.session_state.diary_content
+            
+            response = chat.send_message(full_prompt)
+            st.session_state.robot_response = response.text
+            
+            # 3. [중요] 업데이트된 히스토리를 세션에 다시 저장
+            st.session_state.chat_history = chat.history
 
-        # Extract emotion color from the response using regex
-        try:
-            color_match = re.search(r'#(?:[0-9a-fA-F]{3}){1,2}', st.session_state.robot_response)
-            if color_match:
-                st.session_state.emotion_color = color_match.group(0)
-            else:
-                st.session_state.emotion_color = "#FFFFFF" # Default to white
-        except Exception as e:
-            st.error(f"감정 색깔 파싱 중 오류 발생: {e}")
-            st.session_state.emotion_color = "#FFFFFF" # Default to white
+            # 색상 추출
+            try:
+                color_match = re.search(r'#(?:[0-9a-fA-F]{3}){1,2}', st.session_state.robot_response)
+                if color_match:
+                    st.session_state.emotion_color = color_match.group(0)
+                else:
+                    st.session_state.emotion_color = "#F0F2F6" # 기본 색상
+            except Exception as e:
+                st.session_state.emotion_color = "#F0F2F6"
 
-        st.rerun()
+            st.rerun()
 
-# --- 4. 결과 화면 & 피드백 (로봇 과목 요소) ---
+# --- 4. 결과 화면 & 피드백 ---
 if st.session_state.robot_response:
-    st.markdown(f"<div style='background-color:{st.session_state.emotion_color}; padding: 20px; border-radius: 10px;'>", unsafe_allow_html=True)
-    st.write(st.session_state.robot_response)
-    st.markdown("</div>", unsafe_allow_html=True)
+    st.write("---")
+    st.subheader("🎨 에코의 감정 분석 결과")
+    
+    # [수정됨] 1) 감정 색깔 박스 크기 확대 및 디자인 개선
+    # padding을 늘리고, 그림자(box-shadow)를 추가하여 입체감을 줌
+    st.markdown(f"""
+    <div style='background-color:{st.session_state.emotion_color}; 
+                padding: 40px; 
+                border-radius: 20px; 
+                margin-bottom: 20px;
+                box-shadow: 0 10px 20px rgba(0,0,0,0.1);
+                border: 2px solid #ffffff;'>
+        <div style='background-color: rgba(255, 255, 255, 0.8); padding: 20px; border-radius: 15px;'>
+            {st.session_state.robot_response.replace('\n', '<br>')}
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
 
-    with st.expander("🛠️ AI 학습시키기 (피드백)"):
-        st.subheader("로봇의 분석이 틀렸나요?")
-        feedback_emotion = st.text_input("내가 느낀 진짜 감정", key="feedback_emotion")
-        feedback_wish = st.text_area("로봇에게 바라는 점", key="feedback_wish")
+    # [수정됨] 2) 피드백 시스템 개선
+    with st.expander("🛠️ 에코 더 똑똑하게 만들기 (피드백 전송)"):
+        st.write("로봇의 분석이 아쉬웠나요? 솔직한 감정을 알려주시면 다음 분석에 반영됩니다.")
+        feedback_emotion = st.text_input("내가 느낀 진짜 감정은?", placeholder="예: 슬픔보다는 억울함에 가까워.")
+        feedback_wish = st.text_area("로봇에게 바라는 점", placeholder="예: 해결책보다는 그냥 내 편을 들어줘.")
 
-        if st.button("[수정 데이터 전송]"):
-            st.success("피드백 감사합니다! 에코가 더 똑똑해질 거예요! (데이터 수집 완료)")
+        if st.button("[피드백 전송 및 기억시키기]"):
+            if feedback_emotion or feedback_wish:
+                # 피드백 내용을 대화 기록 형식으로 만듦
+                feedback_prompt = f"""
+                [SYSTEM NOTE: 사용자가 이전 분석에 대해 피드백을 주었습니다.]
+                - 사용자의 실제 감정: {feedback_emotion}
+                - 사용자의 요구사항: {feedback_wish}
+                (다음 일기 분석 시 이 피드백을 최우선으로 고려하여 성격과 답변 방향을 조정하세요.)
+                """
+                
+                # [중요] 히스토리에 유저 메시지로 강제 추가
+                st.session_state.chat_history.append({"role": "user", "parts": [feedback_prompt]})
+                # 모델이 답변한 것처럼 더미 응답 추가 (히스토리 짝을 맞추기 위함)
+                st.session_state.chat_history.append({"role": "model", "parts": ["알겠습니다. 입력해주신 피드백을 메모리에 저장했습니다. 다음 분석부터 반영하겠습니다."]})
+                
+                st.success("피드백이 에코의 장기 기억장치에 저장되었습니다! 🧠")
+                time.sleep(2) # 사용자가 메시지를 볼 시간을 줌
+                st.rerun() # 화면 새로고침하여 상태 업데이트
+            else:
+                st.warning("피드백 내용을 입력해주세요.")
